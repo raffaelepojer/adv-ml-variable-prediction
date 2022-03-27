@@ -6,7 +6,7 @@ Implements the stage1 preprocessing pipeline which consists of several steps:
  (4) Transform the AST parsing result into a graph
  (5) Calculate mapping between tokens and graph nodes
 """
-
+import random
 from itertools import compress
 from logging.config import valid_ident
 from typing import List
@@ -23,7 +23,6 @@ from code_transformer.preprocessing.pipeline.filter import CodePreprocessor, Com
     EmptyLinesRemover, StringMasker, NumbersMasker, IndentTransformer, SubTokenizer, WhitespaceRemover, TokensLimiter, \
     CodePreprocessingException
 from code_transformer.utils.log import get_logger
-from code_transformer.preprocessing.pipeline.stage1 import CTStage1Preprocessor, PreprocessingException, CTStage1Sample
 
 import ast as AstLib
 
@@ -37,9 +36,26 @@ class CodeParsingAstException(Exception):
         return f"Error while parsing ast\n {self.msg}"
 
 
-class CTStage1VarPreprocessor(CTStage1Preprocessor):
+class CTStage1VarPreprocessor:
     def __init__(self, language, allow_empty_methods=False, use_tokens_limiter=True, max_num_tokens=MAX_NUM_TOKENS):
-        super().__init__(language, allow_empty_methods, use_tokens_limiter, max_num_tokens)
+        self.language = language
+        tokenizer = PygmentsTokenizer(language)
+
+        comments_remover = CommentsRemover(tokenizer)
+        empty_lines_remover = EmptyLinesRemover()
+
+        string_masker = StringMasker(MASK_STRING)
+        numbers_masker = NumbersMasker(MASK_NUMBER)
+
+        indent_transformer = IndentTransformer(INDENT_TOKEN, DEDENT_TOKEN, fix_first_indent=True,
+                                               allow_empty_methods=allow_empty_methods)
+        sub_tokenizer = SubTokenizer(NUM_SUB_TOKENS)
+        whitespace_remover = WhitespaceRemover()
+
+        self.code_preprocessor = CodePreprocessor(tokenizer, [comments_remover, empty_lines_remover],
+                                                  [indent_transformer, whitespace_remover, string_masker,
+                                                   numbers_masker, sub_tokenizer])
+        self.tokens_limiter = TokensLimiter(max_num_tokens if use_tokens_limiter else None)
 
     def process(self, batch, process_identifier):
         func_names, docstrings, code_snippets = zip(*batch)
@@ -101,11 +117,12 @@ class CTStage1VarPreprocessor(CTStage1Preprocessor):
                 ast.prune()
                 ast_graph_batch.append(ast)
 
-        variables_batch = []
-
+        success_ast_idx = []
+        all_ok = True
+        variable_name_batch = []
         # Step 4.1 Find all variables after = and in the function arguments
-        for code in code_snippets:
-            try: 
+        for i, code in enumerate(stripped_code_snippets):
+            try:
                 root = AstLib.parse(code)
                 varList = []
                 for node in AstLib.walk(root):
@@ -116,9 +133,26 @@ class CTStage1VarPreprocessor(CTStage1Preprocessor):
                     elif isinstance(node, AstLib.FunctionDef):
                         for arg in node.args.args:
                             varList.append(arg.arg)
-                variables_batch.append(sorted(varList))
-            except:
-                variables_batch.append(None)
+                # randomply pick a random variable (we keep only one variable to predict)
+                if len(varList) > 0: 
+                    variable_name_batch.append(random.choice(varList))
+                    success_ast_idx.append(i)
+                else:
+                    variable_name_batch.append(None)
+            except Exception as e:
+                all_ok = False
+                print('AST not parsed!')
+                logger.warning("Exception in ast variable extraction parsing " + str(e))
+                variable_name_batch.append(None)
+        
+        if not all_ok:
+            variable_name_batch = [variable_name_batch[i] for i in success_ast_idx]
+            stripped_code_snippets = [stripped_code_snippets[i] for i in success_ast_idx]
+            tokens_batch = [tokens_batch[i] for i in success_ast_idx]
+            func_names = [func_names[i] for i in success_ast_idx]
+            docstrings = [docstrings[i] for i in success_ast_idx]
+            ast_graph_batch = [ast_graph_batch[i] for i in success_ast_idx]
+    
 
         # Step 5: Calculate mapping between tokens and graph nodes
         token_mapping_batch = []
@@ -131,7 +165,8 @@ class CTStage1VarPreprocessor(CTStage1Preprocessor):
         samples_batch = []
 
         batch_parts = [tokens_batch, ast_graph_batch, token_mapping_batch, stripped_code_snippets, func_names,
-                       docstrings, variables_batch]
+                       docstrings, variable_name_batch]
+        
         num_samples = len(batch_parts[0])
         assert all([len(batch_part) == num_samples for batch_part in batch_parts]), "Batch parts do not have same " \
                                                                                     "length"
@@ -141,8 +176,66 @@ class CTStage1VarPreprocessor(CTStage1Preprocessor):
 
         return samples_batch
 
-class CTStage1VarSample(CTStage1Sample):
-    def __init__(self, tokens: List[CTToken], ast, token_mapping, stripped_code_snippet, func_name, docstring, variables_batch):
-        super().__init__(tokens, ast, token_mapping, stripped_code_snippet, func_name, docstring)
+class CTStage1VarSample:
+    def __init__(self, tokens: List[CTToken], ast, token_mapping, stripped_code_snippet, func_name, docstring, variable_name):
+        self.tokens = tokens
+        self.ast = ast
+        self.token_mapping = token_mapping
+        self.stripped_code_snippet = stripped_code_snippet
+        self.func_name = func_name
+        self.docstring = docstring
+        self.encoded_func_name = None
+        self.variable_name = variable_name
+        self.encoded_var_name = None
 
-        self.variables_batch = variables_batch
+    def __iter__(self):
+        """
+        Allows unpacking a CSNSample like a tuple
+        """
+        return iter((self.tokens, self.ast, self.token_mapping, self.stripped_code_snippet))
+
+    def compress(self):
+        # In stage 2, ast is only a dict. No need to compress
+        if isinstance(self.ast, ASTGraph):
+            self.ast = self.ast.compress()
+        self.tokens = [token.compress() for token in self.tokens]
+
+        return self.tokens, self.ast, self.token_mapping, self.stripped_code_snippet, self.func_name, self.docstring, self.variable_name
+
+    def print_variable(self):
+        print(self.variable_name)
+
+    @staticmethod
+    def from_compressed(sample):
+        # Cannot be called on the same sample twice, as the original sample is mutated and reused
+        if isinstance(sample, CTStage1VarSample):
+            return sample
+
+        tokens, ast_graph, token_mapping, stripped_code_snippet, func_name, docstring, variable_name = sample
+        tokens = [CTToken.from_compressed(token) for token in tokens]
+        ast_graph = ASTGraph.from_compressed(ast_graph)
+
+        return CTStage1VarSample(tokens, ast_graph, token_mapping, stripped_code_snippet, func_name, docstring, variable_name)
+    
+    def reconstruct_snippet(self):
+        output = []
+        for token in self.tokens:
+            output.append(str(token.string))
+        return ' '.join(output)
+
+    def remove_punctuation(self):
+        # Calculate indices of tokens that should be kept, i.e., are tokens like identifiers or types
+        idx = [i for i, token in enumerate(self.tokens) if len(token.sub_tokens) > 1
+               or (any([c.isalpha() for c in token.sub_tokens[0]]) and not token.sub_tokens[0] in {'[INDENT]',
+                                                                                                   '[DEDENT]'})]
+
+        self.tokens = [self.tokens[i] for i in idx]
+        self.token_mapping = {t: n for t, n in self.token_mapping.items() if t in idx}
+
+class PreprocessingException(Exception):
+    def __init__(self, batch_id, msg):
+        self.batch_id = batch_id
+        self.msg = msg
+
+    def __str__(self):
+        return f"Error processing batch {self.batch_id}: {self.msg}"
