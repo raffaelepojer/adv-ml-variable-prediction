@@ -1,3 +1,16 @@
+# Advance Machine Learning Project
+
+_Forked repository_ from [Code-Transformer](https://github.com/danielzuegner/code-transformer) 
+
+The notebook [interactive_variable_prediction](https://github.com/raffaelepojer/adv-ml-variable-prediction/blob/main/notebooks/interactive_variable_prediction.ipynb) is made to see some examples with the pre-trained models. 
+The models are available via a Google Drive directory. 
+
+# How to run the code
+
+All the instructions to set and run the code-transformer are the same as the original repository (see description below).
+
+---
+
 # Code Transformer
 
 This is an official PyTorch implementation of the `CodeTransformer` model proposed in:  
