@@ -2,14 +2,13 @@ from abc import ABC
 
 from code_transformer.experiments.experiment import ExperimentSetup, ex
 from code_transformer.preprocessing.datamanager.preprocessed import CTBufferedDataManager
-# from code_transformer.preprocessing.dataset.code_summarization import CTCodeSummarizationDatasetEdgeTypes
-from code_transformer.preprocessing.dataset.variable_prediction import CTVariablePredictionDatasetEdgeTypes
+from code_transformer.preprocessing.dataset.code_summarization import CTCodeSummarizationDatasetEdgeTypes
 from code_transformer.preprocessing.graph.distances import DistanceBinning
 from code_transformer.preprocessing.graph.transform import TokenDistancesTransform
 from code_transformer.env import DATA_PATH_STAGE_2
 
 
-class CTCodeSummarizationGreatMixin(ExperimentSetup, ABC):
+class CTVariablePredictionGreatMixin(ExperimentSetup, ABC):
 
     @ex.capture(prefix="data_setup")
     def _init_data(self, language, use_validation=False, mini_dataset=False,
@@ -36,7 +35,7 @@ class CTCodeSummarizationGreatMixin(ExperimentSetup, ABC):
                                                                       self.distance_binning['trans_func']
                                                                       ))
 
-        self.dataset_train = CTVariablePredictionDatasetEdgeTypes(self.data_manager,
+        self.dataset_train = CTCodeSummarizationDatasetEdgeTypes(self.data_manager,
                                                                  token_distances=token_distances,
                                                                  max_distance_mask=self.max_distance_mask,
                                                                  num_sub_tokens=num_sub_tokens,
@@ -47,7 +46,7 @@ class CTCodeSummarizationGreatMixin(ExperimentSetup, ABC):
             data_manager_validation = CTBufferedDataManager(DATA_PATH_STAGE_2, language, partition="valid",
                                                             shuffle=True, infinite_loading=True,
                                                             mini_dataset=mini_dataset)
-            self.dataset_validation = CTVariablePredictionDatasetEdgeTypes(data_manager_validation,
+            self.dataset_validation = CTCodeSummarizationDatasetEdgeTypes(data_manager_validation,
                                                                           token_distances=token_distances,
                                                                           max_distance_mask=self.max_distance_mask,
                                                                           num_sub_tokens=num_sub_tokens,
@@ -66,7 +65,7 @@ class CTCodeSummarizationGreatMixin(ExperimentSetup, ABC):
                                    dataset_imbalance):
         data_manager_validation = CTBufferedDataManager(data_location, language, partition="valid",
                                                         shuffle=True, infinite_loading=infinite_loading)
-        dataset_validation = CTVariablePredictionDatasetEdgeTypes(data_manager_validation,
+        dataset_validation = CTCodeSummarizationDatasetEdgeTypes(data_manager_validation,
                                                                  token_distances=token_distances,
                                                                  max_distance_mask=self.max_distance_mask,
                                                                  num_sub_tokens=num_sub_tokens,

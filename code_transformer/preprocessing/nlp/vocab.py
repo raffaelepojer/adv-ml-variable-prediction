@@ -5,7 +5,9 @@ or to only contain tokens that appear at least n times.
 
 from code_transformer.modeling.constants import UNKNOWN_TOKEN
 from code_transformer.preprocessing.pipeline.stage1 import CTStage1Sample
+from code_transformer.preprocessing.pipeline.stage1var import CTStage1VarSample
 from code_transformer.preprocessing.nlp.tokenization import method_name_to_tokens
+import logging
 
 
 class WordCounter:
@@ -171,7 +173,7 @@ class VocabularyTransformer:
         self.token_type_vocab = token_type_vocab
         self.node_type_vocab = node_type_vocab
 
-    def __call__(self, sample: CTStage1Sample):
+    def __call__(self, sample: CTStage1VarSample): # <---- CHANGED CTStage1Sample - raffaele
         for token in sample.tokens:
             assert all([isinstance(st, str) for st in
                         token.sub_tokens]), f"Some sub tokens ({token.sub_tokens}) do not have string values. Has " \

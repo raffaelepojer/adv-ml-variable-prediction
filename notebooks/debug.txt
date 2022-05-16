@@ -1,0 +1,46 @@
+------------------------------------------------------------------------------------------
+interactive_prediction.ipynb
+------------------------------------------------------------------------------------------
+\step 3.1
+
+make_batch_from_sample
+(
+    stage2_sample: 
+        doctring = ''
+        func_name = 'f'
+        graph_sample: { ast }
+        stripped_code_snippet: "\ndef f(a):\n   print("hello " + a)\n"
+        token_mapping: {2:1, 3:2, 5:4, 10:7, 12:9, 14:10}
+        tokens: [ <token>, ... , ... ]
+            - <token> : original_sub_tokens: ['def]
+                        source_span: end_pos
+                                     start_pos
+                        string: [35]
+                        sub_tokens:[35]
+                        token_type: 7
+    ,
+    model_config: 
+    ,
+    model_type:    
+)
+
+------------------------------------------------------------------------------------------
+inference.py
+------------------------------------------------------------------------------------------
+====
+data_manager = CTPreprocessedDataManager(DATA_PATH_STAGE_2, model_config['data_setup']['language'], 
+                                            partition='train', shuffle=True)
+====
+\line 64: 
+    elif dataset_type == 'no_punctuation':
+        --> CTCodeSummarizationDatasetNoPunctuation(data_manager,
+                                                    num_sub_tokens_output=NUM_SUB_TOKENS_METHOD_NAME,
+                                                    use_pointer_network=use_pointer_network,
+                                                    max_num_tokens=LIMIT_TOKENS,
+                                                    token_distances=token_distances)
+
+------------------------------------------------------------------------------------------
+code_summarization.py
+------------------------------------------------------------------------------------------
+\line 334
+class class CTCodeSummarizationDatasetNoPunctuation(CTCodeSummarizationDataset)

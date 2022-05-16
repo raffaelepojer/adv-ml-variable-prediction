@@ -36,7 +36,7 @@ class CodeParsingAstException(Exception):
         return f"Error while parsing ast\n {self.msg}"
 
 
-class CTStage1VarPreprocessor:
+class CTStage1VarPreprocessorJS:
     def __init__(self, language, allow_empty_methods=False, use_tokens_limiter=True, max_num_tokens=MAX_NUM_TOKENS):
         self.language = language
         tokenizer = PygmentsTokenizer(language)
@@ -89,6 +89,35 @@ class CTStage1VarPreprocessor:
             new_code += line + '\n'
 
         return new_code
+
+    def find_tokens(self, original_code, mini_code):
+        
+        original_codes = []
+        mini_codes = []
+        original_tokens = []
+        mini_tokens = []
+        for code in original_code:
+            try:
+                original_code, tokens = self.code_preprocessor.process(code)
+                original_codes.append(original_code)
+                original_tokens.append(tokens)
+            except CodePreprocessingException as e:
+                logger.warning(str(e))
+                original_tokens.append(None)  # Signalize that this sample is to be ignored
+                original_codes.append(None)
+
+        for code in mini_code:
+            try:
+                mini_code, tokens = self.code_preprocessor.process(code)
+                mini_codes.append(mini_code)
+                mini_tokens.append(tokens)
+            except CodePreprocessingException as e:
+                logger.warning(str(e))
+                mini_tokens.append(None)  # Signalize that this sample is to be ignored
+                mini_codes.append(None)
+
+        print(mini_code)
+                        
 
     def process(self, batch, process_identifier, var_identifier, interactive=False):
         func_names, docstrings, code_snippets = zip(*batch)

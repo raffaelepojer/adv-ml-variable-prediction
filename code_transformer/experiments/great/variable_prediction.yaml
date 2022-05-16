@@ -1,5 +1,5 @@
 experiment_setup:
-  executable: 'code_transformer/experiments/great/code_summarization.py'
+  executable: 'code_transformer/experiments/great/variable_prediction.py'
 
 data_setup:
   language: 'python'
@@ -63,12 +63,12 @@ optimizer:
 
 training:
   random_seed: 456
-  batch_size: 8
-  simulated_batch_size: 128
+  batch_size: 12
+  simulated_batch_size: 144
   simulated_batch_size_valid: 1280
   accumulate_tokens_batch: False
   validate_every: 100
-  persistent_snapshot_every: 100
+  persistent_snapshot_every: 10000
   early_stopping_patience: 20
   max_validation_samples: 50000
   metrics:

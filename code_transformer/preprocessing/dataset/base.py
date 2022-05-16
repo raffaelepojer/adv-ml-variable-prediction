@@ -9,12 +9,13 @@ from torch.utils.data import IterableDataset, DataLoader
 from code_transformer.modeling.constants import PAD_TOKEN, EOS_TOKEN, MAX_NUM_TOKENS, UNKNOWN_TOKEN
 from code_transformer.modeling.data_utils import pad_mask
 from code_transformer.preprocessing.pipeline.stage2 import CTStage2Sample, CTStage2MultiLanguageSample
+from code_transformer.preprocessing.pipeline.stage2var import CTStage2VarSample, CTStage2VarMultiLanguageSample
 from code_transformer.preprocessing.datamanager.preprocessed import CTPreprocessedDataManager
 from code_transformer.preprocessing.nlp.tokenization import split_identifier_into_parts
 from code_transformer.utils.data import pad_list
 
 CTBaseSample = namedtuple("CTBaseSample", ["tokens", "token_types", "node_types", "distance_matrices",
-                                           "binning_vectors", "distance_names", "func_name", "docstring",
+                                           "binning_vectors", "distance_names", "func_name", "docstring", "variable_name", # ADD variable_name
                                            "extended_vocabulary", "extended_vocabulary_ids",
                                            "pointer_pad_mask", "language"])
 CTBaseBatch = namedtuple("CTBaseBatch", ["tokens", "token_types", "node_types", "relative_distances",
@@ -163,6 +164,105 @@ class CTBaseDataset(IterableDataset):
         return CTBaseSample(tokens=sequence, token_types=token_types, node_types=node_types,
                             distance_matrices=distance_matrices, binning_vectors=binning_vectors,
                             distance_names=distance_names, func_name=sample.func_name, docstring=sample.docstring,
+                            extended_vocabulary=extended_vocabulary,
+                            extended_vocabulary_ids=extended_vocabulary_ids, pointer_pad_mask=pointer_pad_mask,
+                            language=sample_language)
+
+    # new function for variable preditcion
+    def transform_sample_var(self, sample: Union[CTStage2VarSample, CTStage2VarMultiLanguageSample]):
+        """
+        Transforms a sample into torch tensors, applies sub token padding (which is independent of the other samples in
+        a batch) and applies the token mapping onto the distance matrices (which makes them much bigger)
+        """
+        token_mapping = sample.token_mapping
+
+        sequence = torch.tensor(
+            [pad_list(token.sub_tokens, self.num_sub_tokens, self.sub_token_pad_value) for token in
+             sample.tokens])
+        if self.use_token_types:
+            token_types = torch.tensor([token.token_type for token in sample.tokens])
+        else:
+            token_types = None
+
+        node_types = torch.tensor(sample.graph_sample['node_types'])
+
+        distance_matrices, binning_vectors, distance_names = zip(
+            *[(distance[0], distance[1], distance[-1]) for distance in sample.graph_sample['distances']])
+
+        binning_vectors = list(binning_vectors)  # Transform to list, to be able to append more bins
+        distance_names = list(distance_names)
+
+        # Apply mapping to graph objects (distance matrices and node type sequence)
+        # This is as simple as duplicating certain rows and columns according to the token mapping
+        # E.g., token mapping   + Distance matrix
+        #       0 -> 1                                  | e e d f d |
+        #       1 -> 1            | a b c |             | e e d f d |
+        #       2 -> 0          + | d e f |         =>  | b b a c a |
+        #       3 -> 2            | g h i |             | h h g i g |
+        #       4 -> 0                                  | b b a c a |
+        # This can be achieved by just using the token mapping values as index list for the distance tensor
+        # mapped_nodes = list(token_mapping.values())
+        mapped_nodes = token_mapping
+        distance_matrices = [dist_matrix[mapped_nodes][:, mapped_nodes] for dist_matrix in distance_matrices]
+        node_types = node_types[mapped_nodes]
+
+        # Optionally, add the token distances metric
+        if self.token_distances:
+            indices, bins = self.token_distances(sequence, token_types, node_types)
+            distance_matrices.append(indices)
+            binning_vectors.append(bins)
+            distance_names.append(self.token_distances.get_name())
+
+        assert len({dist_matrix.shape[0] for dist_matrix in
+                    distance_matrices}) == 1, "Distance matrices have differing lengths"
+
+        extended_vocabulary = None
+        extended_vocabulary_ids = None
+        pointer_pad_mask = None
+        if self.use_pointer_network:
+            # Generating extended vocabulary for pointer network. The extended vocabulary essentially mimics an infinite
+            # vocabulary size for this sample
+            extended_vocabulary_ids = []
+            extended_vocabulary = dict()
+            len_vocab = len(self.word_vocab_labels) if hasattr(self, 'word_vocab_labels') else len(self.word_vocab)
+            for idx_token, token in enumerate(sample.tokens):
+                for idx_subtoken, subtoken in enumerate(token.sub_tokens):
+                    if hasattr(self, 'word_vocab_labels'):
+                        # Use output vocabulary for extended vocabulary in order to allow Pointer Network to merge
+                        # regular predictions (output vocabulary) with pointers to input tokens (subtoken)
+                        subtoken = self.word_vocab_labels[self.word_vocab.reverse_lookup(subtoken)]
+
+                    if subtoken == self.unk_id:
+                        if hasattr(token, 'original_sub_tokens'):
+                            original_subtoken = token.original_sub_tokens[idx_subtoken]
+                        else:
+                            # Try reconstructing original sub token by using encoded sub token and vocabulary
+                            original_subtoken = split_identifier_into_parts(
+                                token.source_span.substring(sample.stripped_code_snippet))[idx_subtoken]
+
+                        if original_subtoken in extended_vocabulary:
+                            extended_id = extended_vocabulary[original_subtoken]
+                        else:
+                            # print("original sub_token: ", original_subtoken)
+                            extended_id = len_vocab + len(extended_vocabulary)
+                            extended_vocabulary[original_subtoken] = extended_id
+                        extended_vocabulary_ids.append(extended_id)
+                    else:
+                        extended_vocabulary_ids.append(subtoken)
+
+            pointer_pad_mask = sequence != self.sub_token_pad_value
+
+        sample_language = None
+        if isinstance(sample, CTStage2VarMultiLanguageSample):
+            # use multi-language
+            sample_language = self.data_manager.language.split(',').index(sample.language)
+
+        return CTBaseSample(tokens=sequence, token_types=token_types, node_types=node_types,
+                            distance_matrices=distance_matrices, binning_vectors=binning_vectors,
+                            distance_names=distance_names, 
+                            func_name=None,
+                            docstring=sample.docstring, 
+                            variable_name=sample.variable_name,
                             extended_vocabulary=extended_vocabulary,
                             extended_vocabulary_ids=extended_vocabulary_ids, pointer_pad_mask=pointer_pad_mask,
                             language=sample_language)

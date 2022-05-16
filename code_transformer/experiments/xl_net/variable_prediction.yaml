@@ -1,42 +1,51 @@
 experiment_setup:
-  executable: 'code_transformer/experiments/great/code_summarization.py'
+  executable: 'code_transformer/experiments/xl_net/variable_prediction.py'
 
 data_setup:
   language: 'python'
   use_validation: True
   num_sub_tokens: 5
   num_subtokens_output: 6
+  use_no_punctuation: True
   use_pointer_network: True
 
 data_transforms:
   max_distance_mask: None
-  relative_distances:
-    - ppr
-    - ancestor_sp
-    - sibling_sp
-    - shortest_paths
-
+  relative_distances: None
   distance_binning:
     type: 'exponential'
     growth_factor: 1.3
     n_fixed_bins: 9
 
+transfer_learning:
+  use_pretrained_model: False
+  model_type: 'xl_net_lm'
+  run_id: 4
+  snapshot_iteration: 'latest'
+  cpu: False
+  freeze_encoder_layers: None
+
 model:
   with_cuda: True
   label_smoothing: 0.1
   lm_encoder:
-    transformer_config:
-      embed_dim: 16
-      num_layers: 3
-      num_heads: 8
-      ff_dim: 16
-      dropout_rate: 0.2
+    subtokens_per_token: 5
+    num_languages: None
+    input_nonlinearity: 'tanh'
+    transformer:
+      d_model: 1024
+      n_layer: 3
+      n_head: 8
+      d_inner: 2048
+      ff_activation: 'gelu'
+      dropout: 0.2
+      mem_len: 1024
   lm_decoder:
     output_nonlinearity: None
     n_layers: 1
     decoder_dropout: 0
     decoder_nhead: 8
-    decoder_dim_feedforward: 15
+    decoder_dim_feedforward: 2048
     decoder_activation: 'gelu'
     use_teacher_forcing: True
     pointer_attention_type: 'additive'
@@ -49,26 +58,14 @@ optimizer:
   learning_rate: 8e-5
   reg_scale: 3e-5
 
-  #scheduler: 'OneCycleLR'
-  #scheduler_params:
-  #  max_lr: 1e-4
-  #  steps_per_epoch: 4000
-  #  epochs: 30
-  #  pct_start: 0.3
-
-  #scheduler: 'MultiStepLR'
-  #scheduler_params:
-  #  milestones: [1500, 5000]
-  #  gamma: 0.1
-
 training:
   random_seed: 456
-  batch_size: 8
-  simulated_batch_size: 128
+  batch_size: 12
+  simulated_batch_size: 144
   simulated_batch_size_valid: 1280
   accumulate_tokens_batch: False
   validate_every: 100
-  persistent_snapshot_every: 100
+  persistent_snapshot_every: 10000
   early_stopping_patience: 20
   max_validation_samples: 50000
   metrics:
@@ -79,6 +76,3 @@ training:
     - recall
     - f1_score
     - micro_f1_score
-    - rouge-2
-    - rouge-l
-

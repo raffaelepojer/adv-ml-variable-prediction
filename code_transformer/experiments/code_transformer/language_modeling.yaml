@@ -2,7 +2,7 @@ experiment_setup:
   executable: 'code_transformer/experiments/code_transformer/language_modeling.py'
 
 data_setup:
-  language: 'java-small'
+  language: 'python'
   num_predict: 2
   use_validation: True
   use_no_punctuation: True

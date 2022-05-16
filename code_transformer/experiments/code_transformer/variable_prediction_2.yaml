@@ -1,15 +1,23 @@
 experiment_setup:
-  executable: 'code_transformer/experiments/great/code_summarization.py'
+  executable: 'code_transformer/experiments/code_transformer/variable_prediction.py'
 
 data_setup:
   language: 'python'
+  filter_language: None
   use_validation: True
   num_sub_tokens: 5
   num_subtokens_output: 6
+  use_only_ast: False
+  mask_all_tokens: False
+  use_no_punctuation: True
   use_pointer_network: True
+  sort_by_length: False
+  shuffle: False
+  chunk_size: 32
 
 data_transforms:
   max_distance_mask: None
+
   relative_distances:
     - ppr
     - ancestor_sp
@@ -21,27 +29,45 @@ data_transforms:
     growth_factor: 1.3
     n_fixed_bins: 9
 
+transfer_learning:
+  use_pretrained_model: True
+  model_type: 'ct_code_summarization'
+  run_id: CT-5
+  snapshot_iteration: 'latest'
+  cpu: False
+  freeze_encoder_layers: None
+
 model:
   with_cuda: True
   label_smoothing: 0.1
   lm_encoder:
-    transformer_config:
-      embed_dim: 16
+    input_nonlinearity: 'tanh'
+    num_languages: None
+    transformer:
       num_layers: 3
-      num_heads: 8
-      ff_dim: 16
-      dropout_rate: 0.2
+      encoder_layer:
+        d_model: 1024
+        nhead: 8
+        dim_feedforward: 2048
+        dropout: 0.2
+        activation: 'gelu'
+        use_content_content: True
+        use_content_pos: True
+        use_pos_content: True
+        use_pos_pos: True
+        use_token_distances: True
   lm_decoder:
     output_nonlinearity: None
     n_layers: 1
     decoder_dropout: 0
     decoder_nhead: 8
-    decoder_dim_feedforward: 15
+    decoder_dim_feedforward: 2048
     decoder_activation: 'gelu'
     use_teacher_forcing: True
     pointer_attention_type: 'additive'
     use_pointer_query_linear: False
-    use_pointer_query_self_attention: False
+    use_pointer_query_self_attention: True
+    concat_query_and_pointer: True
     attend_cls_token: False
 
 optimizer:
@@ -49,26 +75,14 @@ optimizer:
   learning_rate: 8e-5
   reg_scale: 3e-5
 
-  #scheduler: 'OneCycleLR'
-  #scheduler_params:
-  #  max_lr: 1e-4
-  #  steps_per_epoch: 4000
-  #  epochs: 30
-  #  pct_start: 0.3
-
-  #scheduler: 'MultiStepLR'
-  #scheduler_params:
-  #  milestones: [1500, 5000]
-  #  gamma: 0.1
-
 training:
   random_seed: 456
-  batch_size: 8
-  simulated_batch_size: 128
+  batch_size: 12
+  simulated_batch_size: 144
   simulated_batch_size_valid: 1280
   accumulate_tokens_batch: False
   validate_every: 100
-  persistent_snapshot_every: 100
+  persistent_snapshot_every: 10000
   early_stopping_patience: 20
   max_validation_samples: 50000
   metrics:
@@ -79,6 +93,5 @@ training:
     - recall
     - f1_score
     - micro_f1_score
-    - rouge-2
-    - rouge-l
-
+    - rouge_2
+    - rouge_l

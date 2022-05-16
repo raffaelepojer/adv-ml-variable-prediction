@@ -6,6 +6,8 @@ During the first run on the train partition the vocabulary is generated. This vo
 the validate and test partition
 """
 
+from code_transformer.preprocessing.nlp.tokenization import CTToken, split_identifier_into_parts
+
 import itertools
 import signal
 import sys
@@ -23,7 +25,8 @@ from code_transformer.preprocessing.datamanager.preprocessed import CTBufferedDa
 from code_transformer.preprocessing.graph.binning import ExponentialBinning
 from code_transformer.preprocessing.graph.distances import PersonalizedPageRank, ShortestPaths, AncestorShortestPaths, \
     SiblingShortestPaths, DistanceBinning
-from code_transformer.preprocessing.graph.transform import DistancesTransformer
+# from code_transformer.preprocessing.graph.transform import DistancesTransformer
+from  code_transformer.preprocessing.graph.transform_var import DistancesTransformerVar
 from code_transformer.preprocessing.nlp.vocab import WordCounter, CodeSummarizationVocabularyTransformer, \
     VocabularyTransformer
 from code_transformer.preprocessing.pipeline.stage1var import CTStage1VarSample
@@ -208,7 +211,7 @@ class Preprocess2ContainerVar:
                                  ExponentialBinning(self.exponential_binning_growth_factor))
         else:
             db = DistanceBinning(self.num_bins, self.n_fixed_bins)
-        self.distances_transformer = DistancesTransformer(distance_metrics, db)
+        self.distances_transformer = DistancesTransformerVar(distance_metrics, db)
 
     def _combine_counters(self, counters, min_vocab_frequency):
         """
@@ -241,26 +244,48 @@ class Preprocess2ContainerVar:
                 if use_multi_language:
                     # TODO check if in multilanguage sample_language is the first
                     sample_language, sample = sample
-                assert len(sample) == 7, f"Unexpected sample format! {sample}"
+                assert len(sample) == 6, f"Unexpected sample format! {sample}"
                 sample = CTStage1VarSample.from_compressed(sample)
+                
+                parts = split_identifier_into_parts(sample.variable_name)
+                # if parts[0] not in [t for tok in sample.tokens for t in tok.sub_tokens]:
+                #     print('-' * 50)
+                #     print("sub: ", [tok.sub_tokens for tok in sample.tokens])
+                #     print("initial lenght: ", len([tok.sub_tokens for tok in sample.tokens]))
+                #     print(sample.variable_name)
+                #     print(sample.variable_name in [t for tok in sample.tokens for t in tok.sub_tokens])
+
                 if max_num_tokens is not None and len(sample.tokens) > max_num_tokens:
                     print(
                         f"Snippet with {len(sample.tokens)} tokens exceeds limit of {max_num_tokens}! Skipping")
                     continue
                 if remove_punctuation:
                     sample.remove_punctuation()
+                
+                if parts[0] not in [t for tok in sample.tokens for t in tok.sub_tokens]:
+                    print('-' * 50)
+                    print("sub: ", [tok.sub_tokens for tok in sample.tokens])
+                    print("initial lenght: ", len([tok.sub_tokens for tok in sample.tokens]))
+                    print(sample.variable_name)
+                    print(sample.variable_name in [t for tok in sample.tokens for t in tok.sub_tokens])
+
+                    print()
+
+                    print("sub: ", [tok.sub_tokens for tok in sample.tokens])
+                    print("final lenght: ", len([tok.sub_tokens for tok in sample.tokens]))
+                    print(sample.variable_name)
+                    print(sample.variable_name in [t for tok in sample.tokens for t in tok.sub_tokens])
+                    print('-' * 50)
+
                 sample = vocabulary_transformer(sample)
                 sample = distances_transformer(sample)
-                sample.print_variable()
-                
+
                 if use_multi_language:
                     sample = CTStage2VarMultiLanguageSample(sample.tokens, sample.graph_sample, sample.token_mapping,
-                                                         sample.stripped_code_snippet, sample.func_name,
+                                                         sample.stripped_code_snippet, 
                                                          sample.docstring,
                                                          sample.variable_name,
                                                          sample_language,
-                                                         encoded_func_name=sample.encoded_func_name if hasattr(sample,
-                                                                                                               'encoded_func_name') else None,
                                                          encoded_variable_name=sample.encoded_variable_name if hasattr(sample,
                                                                                                                'encoded_variable_name') else None)
                 output.append(sample)
@@ -310,11 +335,6 @@ class Preprocess2ContainerVar:
 
                 if dataset:
                     dataset = [sample for batch in dataset for sample in batch]
-                    print(dataset)
-                    temp = vars(dataset)
-                    for item in temp:
-                        #print(item, ':', temp[item])
-                        print(item)
                     n_samples_after += len(dataset)
                     self.logger.info(
                         f"processing {len(dataset)} samples took {t[0]:0.2f} seconds ({t[0] / len(dataset):0.3f} seconds "
