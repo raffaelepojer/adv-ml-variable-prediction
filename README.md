@@ -3,7 +3,7 @@
 _Forked repository_ from [Code-Transformer](https://github.com/danielzuegner/code-transformer) 
 
 The notebook [interactive_variable_prediction](https://github.com/raffaelepojer/adv-ml-variable-prediction/blob/main/notebooks/interactive_variable_prediction.ipynb) is made to see some examples with the pre-trained models. 
-The models are available via a Google Drive directory. 
+The models are available via a [Google Drive directory](https://drive.google.com/drive/folders/1usY9l0jeKzuwSZVEZeW0v5cgvdyV1ov4?usp=sharing). 
 
 # How to run the code
 
